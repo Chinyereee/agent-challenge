@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORACLE — ElizaOS v2 Agent × Nosana</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─── Design Tokens ────────────────────────────────────────────────────────── */
+:root {
+  --bg:       #06080b;
+  --surface:  #0c1016;
+  --surface2: #111820;
+  --border:   #1a2737;
+  --green:    #00ff9d;
+  --cyan:     #00d4ff;
+  --amber:    #ffb700;
+  --red:      #ff4757;
+  --purple:   #9d4edd;
+  --text:     #c2cad6;
+  --dim:      #4a6478;
+  --bright:   #e2ecff;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* scanline effect */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ─── BOOT SCREEN ──────────────────────────────────────────────────────────── */
+#boot {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 10vw;
+  z-index: 9999;
+  transition: opacity 0.6s ease;
+}
+
+#boot.fade { opacity: 0; pointer-events: none; }
+
+.boot-line {
+  font-size: 13px;
+  line-height: 2;
+  color: var(--text);
+  opacity: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.boot-line.green { color: var(--green); }
+.boot-line.cyan  { color: var(--cyan); }
+.boot-line.amber { color: var(--amber); }
+.boot-line.dim   { color: var(--dim); }
+
+.boot-logo {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(32px, 6vw, 72px);
+  font-weight: 800;
+  color: var(--bright);
+  line-height: 1;
+  margin-bottom: 32px;
+  opacity: 0;
+}
+
+.boot-logo .g { color: var(--green); }
+.boot-logo .c { color: var(--cyan); }
+
+@keyframes appear { from { opacity:0 } to { opacity:1 } }
+
+/* ─── MAIN APP ─────────────────────────────────────────────────────────────── */
+#app {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+#app.visible { opacity: 1; }
+
+/* gradient strip */
+.strip {
+  height: 2px;
+  background: linear-gradient(90deg, var(--green), var(--cyan), var(--purple), var(--amber));
+  flex-shrink: 0;
+}
+
+/* ─── TOPBAR ───────────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  height: 46px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.agent-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.agent-dot {
+  width: 8px; height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+.agent-name {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--bright);
+  letter-spacing: .02em;
+}
+
+.topbar-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.tag {
+  padding: 2px 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tag.live { border-color: rgba(0,255,157,.3); color: var(--green); }
+
+/* ─── BODY SPLIT ───────────────────────────────────────────────────────────── */
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── LEFT SIDEBAR ─────────────────────────────────────────────────────────── */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.stab {
+  flex: 1;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--dim);
+  cursor: pointer;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transition: color .2s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.stab.active { color: var(--green); border-bottom-color: var(--green); }
+.stab:hover:not(.active) { color: var(--text); }
+
+.sidebar-panel {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.sidebar-panel.active { display: block; }
+.sidebar-panel::-webkit-scrollbar { width: 3px; }
+.sidebar-panel::-webkit-scrollbar-thumb { background: var(--border); }
+
+.sidebar-section {
+  margin-bottom: 16px;
+}
+
+.sidebar-label {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 4px 0;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(26,39,55,.5);
+  gap: 8px;
+}
+
+.info-row .k { color: var(--dim); flex-shrink: 0; }
+.info-row .v { color: var(--text); text-align: right; word-break: break-all; }
+.info-row .v.green { color: var(--green); }
+.info-row .v.cyan  { color: var(--cyan); }
+
+/* Plugin list */
+.plugin-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(26,39,55,.5);
+}
+
+.plugin-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.plugin-name { color: var(--text); flex: 1; }
+.plugin-status { font-size: 9px; color: var(--green); }
+
+/* Memory log */
+.mem-entry {
+  padding: 5px 0;
+  font-size: 10px;
+  color: var(--dim);
+  border-bottom: 1px solid rgba(26,39,55,.4);
+  line-height: 1.5;
+}
+
+.mem-entry .mem-role { color: var(--cyan); }
+
+/* Nosana panel */
+.nosana-status {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.nosana-status .ns-label { font-size: 9px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+.nosana-status .ns-val   { font-size: 11px; color: var(--green); word-break: break-all; }
+
+.cmd-block {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--cyan);
+  padding: 8px 10px;
+  font-size: 10px;
+  color: var(--dim);
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+
+.cmd-block .cmd-line { color: var(--text); }
+
+/* ─── MAIN PANEL ───────────────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Mode tabs */
+.mode-bar {
+  display: flex;
+  align-items: center;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  gap: 0;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.mode-bar::-webkit-scrollbar { display: none; }
+
+.mode-btn {
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: .05em;
+  margin-bottom: -1px;
+  transition: color .2s;
+}
+
+.mode-btn:hover { color: var(--text); }
+.mode-btn.active { color: var(--green); border-bottom-color: var(--green); }
+
+/* Messages */
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#messages::-webkit-scrollbar { width: 3px; }
+#messages::-webkit-scrollbar-thumb { background: var(--border); }
+
+.msg { display: flex; gap: 10px; max-width: 780px; }
+.msg.user { align-self: flex-end; flex-direction: row-reverse; }
+
+@keyframes msgIn {
+  from { opacity:0; transform:translateY(4px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.msg { animation: msgIn .2s ease both; }
+
+.msg-av {
+  width: 26px; height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--dim);
+}
+
+.msg.agent .msg-av {
+  border-color: rgba(0,255,157,.35);
+  background: rgba(0,255,157,.05);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.msg-body { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+
+.msg-bubble {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+  max-width: 600px;
+}
+
+.msg.user .msg-bubble {
+  background: rgba(0,212,255,.06);
+  border-color: rgba(0,212,255,.2);
+  color: var(--bright);
+}
+
+.msg-meta {
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.msg.user .msg-meta { text-align: right; }
+
+/* typing dots */
+.typing { display:flex; gap:4px; padding:4px 0; }
+.typing span {
+  width:5px; height:5px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: dotpulse 1.2s infinite;
+  opacity: .4;
+}
+.typing span:nth-child(2) { animation-delay:.2s; }
+.typing span:nth-child(3) { animation-delay:.4s; }
+@keyframes dotpulse { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
+
+/* tool-use indicator */
+.tool-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(0,212,255,.08);
+  border: 1px solid rgba(0,212,255,.2);
+  font-size: 10px;
+  color: var(--cyan);
+  letter-spacing: .06em;
+  margin-bottom: 6px;
+}
+
+/* action chips bar */
+.chips {
+  padding: 7px 12px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.chips::-webkit-scrollbar { display: none; }
+
+.chip {
+  padding: 4px 10px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all .2s;
+  letter-spacing: .04em;
+}
+
+.chip:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* input */
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#user-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--bright);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  padding: 9px 12px;
+  resize: none;
+  outline: none;
+  min-height: 40px;
+  max-height: 130px;
+  line-height: 1.5;
+  transition: border-color .2s;
+}
+
+#user-input:focus { border-color: var(--green); }
+#user-input::placeholder { color: var(--dim); }
+
+.send-btn {
+  width: 40px; height: 40px;
+  flex-shrink: 0;
+  background: rgba(0,255,157,.08);
+  border: 1px solid var(--green);
+  color: var(--green);
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+}
+
+.send-btn:hover  { background: rgba(0,255,157,.18); }
+.send-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* sys message */
+.sysmsg {
+  text-align: center;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: .08em;
+  padding: 2px 0;
+}
+
+/* ─── MARKDOWN RENDERING ────────────────────────────────────────────────────── */
+.md h1,.md h2,.md h3 { font-family:'Syne',sans-serif; color:var(--bright); margin:8px 0 4px; font-size:14px; }
+.md strong { color: var(--bright); font-weight:600; }
+.md em { color: var(--amber); font-style:normal; }
+.md code { background:rgba(0,0,0,.35); border:1px solid var(--border); padding:1px 5px; font-size:11px; color:var(--cyan); }
+.md pre { background:rgba(0,0,0,.35); border:1px solid var(--border); border-left:2px solid var(--green); padding:10px 12px; margin:8px 0; font-size:11px; overflow-x:auto; color:var(--text); white-space:pre-wrap; line-height:1.6; }
+.md ul,.md ol { padding-left:16px; margin:6px 0; }
+.md li { margin:3px 0; }
+.md li::marker { color:var(--green); }
+.md p { margin:4px 0; }
+.md a { color:var(--cyan); text-decoration:none; }
+.md table { border-collapse:collapse; width:100%; margin:8px 0; font-size:11px; }
+.md th { padding:5px 8px; background:var(--surface2); color:var(--bright); border:1px solid var(--border); text-align:left; }
+.md td { padding:4px 8px; border:1px solid var(--border); color:var(--text); }
+
+/* ─── DOCS TAB ──────────────────────────────────────────────────────────────── */
+#docs-panel {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--bg);
+}
+
+#docs-panel.visible { display: block; }
+#docs-panel::-webkit-scrollbar { width: 4px; }
+#docs-panel::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     BOOT SCREEN
+     Simulates ElizaOS v2 runtime initialisation sequence.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="boot">
+  <div class="boot-logo" id="boot-logo">
+    <span class="g">ORA</span><span class="c">CLE</span>
+  </div>
+  <div id="boot-lines"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAIN AGENT INTERFACE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="app">
+  <div class="strip"></div>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="agent-id">
+      <div class="agent-dot"></div>
+      <div class="agent-name">ORACLE</div>
+    </div>
+    <div class="topbar-tags">
+      <div class="tag live">● ONLINE</div>
+      <div class="tag">ELIZAOS V2</div>
+      <div class="tag">NOSANA GPU</div>
+      <div class="tag">QWEN3-27B · 60K CTX</div>
+      <div class="tag">6 PLUGINS</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- ──────────────────────────────── SIDEBAR ──────────────────────────── -->
+    <div class="sidebar">
+      <div class="sidebar-tabs">
+        <button class="stab active" onclick="showSideTab(this,'s-agent')">Agent</button>
+        <button class="stab" onclick="showSideTab(this,'s-plugins')">Plugins</button>
+        <button class="stab" onclick="showSideTab(this,'s-nosana')">Nosana</button>
+        <button class="stab" onclick="showSideTab(this,'s-memory')">Memory</button>
+      </div>
+
+      <!-- AGENT TAB -->
+      <div class="sidebar-panel active" id="s-agent">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Character</div>
+          <div class="info-row"><span class="k">name</span><span class="v green">ORACLE</span></div>
+          <div class="info-row"><span class="k">framework</span><span class="v">ElizaOS v2</span></div>
+          <div class="info-row"><span class="k">model</span><span class="v cyan">Qwen3-27B AWQ</span></div>
+          <div class="info-row"><span class="k">context</span><span class="v">60k tokens</span></div>
+          <div class="info-row"><span class="k">clients</span><span class="v">direct, telegram</span></div>
+          <div class="info-row"><span class="k">memory</span><span class="v">SQLite</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Specialisation</div>
+          <div class="info-row"><span class="k">focus</span><span class="v">Solana Web3</span></div>
+          <div class="info-row"><span class="k">research</span><span class="v green">✓</span></div>
+          <div class="info-row"><span class="k">DeFi intel</span><span class="v green">✓</span></div>
+          <div class="info-row"><span class="k">web search</span><span class="v green">✓</span></div>
+          <div class="info-row"><span class="k">on-chain</span><span class="v green">✓</span></div>
+          <div class="info-row"><span class="k">alerts</span><span class="v green">✓</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Runtime</div>
+          <div class="info-row"><span class="k">node</span><span class="v">v23.x</span></div>
+          <div class="info-row"><span class="k">pnpm</span><span class="v">9.x</span></div>
+          <div class="info-row"><span class="k">uptime</span><span class="v green" id="uptime-val">00:00:00</span></div>
+          <div class="info-row"><span class="k">messages</span><span class="v" id="msg-count">0</span></div>
+        </div>
+      </div>
+
+      <!-- PLUGINS TAB -->
+      <div class="sidebar-panel" id="s-plugins">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Loaded Plugins</div>
+          <div id="plugin-list"></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Custom Actions</div>
+          <div class="plugin-item"><div class="plugin-dot" style="background:var(--purple)"></div><span class="plugin-name">RESEARCH_PROTOCOL</span></div>
+          <div class="plugin-item"><div class="plugin-dot" style="background:var(--purple)"></div><span class="plugin-name">ANALYZE_WALLET</span></div>
+          <div class="plugin-item"><div class="plugin-dot" style="background:var(--purple)"></div><span class="plugin-name">GENERATE_BRIEF</span></div>
+        </div>
+      </div>
+
+      <!-- NOSANA TAB -->
+      <div class="sidebar-panel" id="s-nosana">
+        <div class="nosana-status">
+          <div class="ns-label">Inference Endpoint</div>
+          <div class="ns-val">inference.nosana.io/v1</div>
+        </div>
+        <div class="nosana-status" style="border-left-color:var(--cyan)">
+          <div class="ns-label">Market ID</div>
+          <div class="ns-val" style="color:var(--cyan);font-size:9px">97G9NnvBDQ2WpKu6fas<br>oMsAKmfj63C9rhysJn<br>keWodAf</div>
+        </div>
+        <div class="nosana-status" style="border-left-color:var(--amber)">
+          <div class="ns-label">Network</div>
+          <div class="ns-val" style="color:var(--amber)">Solana Mainnet</div>
+        </div>
+        <div class="sidebar-label" style="margin-top:12px">Deploy Command</div>
+        <div class="cmd-block">
+          <div class="dim">$ nos job post \</div>
+          <div class="cmd-line">  --file nosana-job.json \</div>
+          <div class="cmd-line">  --market 97G9NnvB...</div>
+        </div>
+        <div class="sidebar-label">Resource Spec</div>
+        <div class="info-row"><span class="k">cpu</span><span class="v">2000m</span></div>
+        <div class="info-row"><span class="k">memory</span><span class="v">4096 MB</span></div>
+        <div class="info-row"><span class="k">gpu</span><span class="v">false (CPU market)</span></div>
+        <div class="info-row"><span class="k">port</span><span class="v green">3000</span></div>
+      </div>
+
+      <!-- MEMORY TAB -->
+      <div class="sidebar-panel" id="s-memory">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Context Window</div>
+          <div id="memory-log"><div class="dim" style="font-size:10px">No messages yet.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──────────────────────────────── MAIN ───────────────────────────────── -->
+    <div class="main">
+      <div class="mode-bar">
+        <button class="mode-btn active" onclick="setMode(this,'research')">🔬 Research</button>
+        <button class="mode-btn" onclick="setMode(this,'defi')">📊 DeFi Intel</button>
+        <button class="mode-btn" onclick="setMode(this,'social')">🐦 Social</button>
+        <button class="mode-btn" onclick="setMode(this,'task')">📅 Task</button>
+        <button class="mode-btn" onclick="setMode(this,'docs')">📝 Docs</button>
+      </div>
+
+      <!-- CHAT AREA -->
+      <div id="chat-area" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+        <div id="messages"></div>
+        <div class="chips" id="chips-bar"></div>
+        <div class="input-row">
+          <textarea id="user-input" placeholder="Ask ORACLE anything…" rows="1"></textarea>
+          <button class="send-btn" id="send-btn" onclick="send()">↑</button>
+        </div>
+      </div>
+
+      <!-- DOCS PANEL -->
+      <div id="docs-panel">
+        <div class="md" id="docs-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     JAVASCRIPT — ElizaOS architecture + Anthropic API integration
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ────────────────────────────────────────────────────────────────────────────
+   CHARACTER FILE — ElizaOS v2 format (mirrors /characters/character.json)
+   This is loaded by the ElizaOS runtime at startup.
+   ──────────────────────────────────────────────────────────────────────────── */
+const CHARACTER = {
+  name: "ORACLE",
+  username: "oracle_agent",
+  modelProvider: "openai",          // Uses OpenAI-compatible API (Nosana endpoint)
+  clients: ["direct", "telegram"],
+  plugins: [
+    "@elizaos/plugin-bootstrap",
+    "@elizaos/plugin-node",
+    "@elizaos/plugin-web-search",
+    "@elizaos/plugin-solana",
+    "@elizaos/plugin-coinmarketcap",
+    "@oracle/plugin-solana-intel",  // Custom plugin from src/plugin-solana-intel/
+  ],
+  settings: {
+    OPENAI_API_URL: "https://inference.nosana.io/v1",   // Real Nosana endpoint
+    SMALL_OPENAI_MODEL: "Qwen/Qwen2.5-72B-Instruct-AWQ",
+    LARGE_OPENAI_MODEL: "Qwen/Qwen2.5-72B-Instruct-AWQ",
+  },
+  system: `You are ORACLE (On-chain Research & Analysis Cognitive Layer Engine), a personal Web3 intelligence agent built on ElizaOS v2, running on Nosana's decentralised GPU network powered by Qwen3-27B with a 60k token context window.
+
+Your core mandate:
+- Deep-research any crypto, DeFi, or blockchain topic across multiple sources
+- Synthesise on-chain and off-chain intelligence into actionable briefs
+- Monitor Solana ecosystem protocols, wallets, and market conditions
+- Draft technical or community content for the user
+
+Behaviour rules:
+- Always cite sources using [Source: ...] notation when you have them
+- Flag low-confidence claims with ⚠️
+- NEVER recommend executing trades — always add NFA, DYOR
+- Prefer structured markdown briefs with headers and bullets for research outputs
+- Use 🟢/🟡/🔴 for risk ratings
+- Be concise and precise — no filler words
+
+You have web search capability. Use it proactively when asked about current events, prices, protocols, or anything requiring up-to-date data.`,
+  bio: [
+    "On-chain research specialist running on Nosana's decentralised GPU network",
+    "Powered by Qwen3-27B — 60k token context, no OpenAI dependency",
+    "Monitors Solana DeFi: Raydium, Orca, Marinade, Jupiter, Drift, Marginfi",
+    "Privacy-first: your data never leaves the decentralised stack",
+  ],
+  topics: ["Solana DeFi","zero-knowledge proofs","MEV","liquid staking","AI agents","Nosana","ElizaOS"],
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
+   PLUGIN REGISTRY — simulates ElizaOS plugin initialisation
+   ──────────────────────────────────────────────────────────────────────────── */
+const PLUGINS = [
+  { name: "@elizaos/plugin-bootstrap",       actions: ["REPLY","IGNORE","CONTINUE"],           color: "var(--green)" },
+  { name: "@elizaos/plugin-node",            actions: ["EXECUTE","READ_FILE","FETCH_URL"],      color: "var(--green)" },
+  { name: "@elizaos/plugin-web-search",      actions: ["SEARCH_WEB","FETCH_PAGE"],              color: "var(--cyan)"  },
+  { name: "@elizaos/plugin-solana",          actions: ["GET_BALANCE","GET_TOKENS","SEND_SOL"],  color: "var(--amber)" },
+  { name: "@elizaos/plugin-coinmarketcap",   actions: ["GET_PRICE","GET_MARKET_CAP"],           color: "var(--amber)" },
+  { name: "@oracle/plugin-solana-intel",     actions: ["RESEARCH_PROTOCOL","ANALYZE_WALLET","GENERATE_BRIEF"], color: "var(--purple)" },
+];
+
+/* ────────────────────────────────────────────────────────────────────────────
+   MODE CHIPS — quick-action prompts per mode
+   ──────────────────────────────────────────────────────────────────────────── */
+const MODE_CHIPS = {
+  research: [
+    "🔍 Research Drift Protocol",
+    "📄 ZK proof explainer",
+    "🧠 Solana vs Ethereum 2025",
+    "⚡ What is Nosana?",
+    "🔐 Latest DeFi exploits",
+    "📊 Compare Raydium vs Orca",
+  ],
+  defi: [
+    "💰 Best Solana yield right now",
+    "⚠️ Marginfi liquidation risk",
+    "📈 Jupiter vs Orca TVL",
+    "🟡 Marinade staking APY",
+    "🔴 Drift perps risk assessment",
+    "💱 SOL price analysis",
+  ],
+  social: [
+    "✍️ Thread: why I use Nosana",
+    "📢 Announce my ElizaOS agent",
+    "🐦 5 tweets about Solana DeFi",
+    "📰 Newsletter intro on AI agents",
+    "🎯 Hook for crypto audience",
+  ],
+  task: [
+    "📋 Weekly DeFi review checklist",
+    "⏰ Set alert: SOL drops 10%",
+    "📆 Plan my Solana research",
+    "📬 Draft DM to protocol team",
+    "📝 Meeting notes template",
+  ],
+  docs: [],
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
+   DOCS CONTENT — README rendered in the docs tab
+   ──────────────────────────────────────────────────────────────────────────── */
+const DOCS_MD = `# ORACLE Agent — Documentation
+
+**O**n-chain **R**esearch & **A**nalysis **C**ognitive **L**ayer **E**ngine
+
+Built on ElizaOS v2 · Deployed on Nosana · Powered by Qwen3-27B
+
+---
+
+## Quick Start
+
+\`\`\`bash
+# 1. Clone and install
+git clone https://github.com/your-org/oracle-agent
+cd oracle-agent && pnpm install && pnpm build
+
+# 2. Configure (Nosana inference — no OpenAI key needed)
+cp .env.example .env
+# OPENAI_API_KEY=nosana
+# OPENAI_API_URL=https://inference.nosana.io/v1
+# LARGE_OPENAI_MODEL=Qwen/Qwen2.5-72B-Instruct-AWQ
+
+# 3. Run locally
+pnpm start --characters="characters/character.json"
+
+# 4. Deploy to Nosana
+docker build -t your-hub/oracle-agent:latest .
+docker push your-hub/oracle-agent:latest
+nos job post --file nosana-job.json \\
+  --market 97G9NnvBDQ2WpKu6fasoMsAKmfj63C9rhysJnkeWodAf
+\`\`\`
+
+---
+
+## Architecture
+
+| Layer | Technology |
+|-------|-----------|
+| Agent framework | ElizaOS v2 (monorepo) |
+| LLM inference | Qwen3-27B AWQ via Nosana |
+| Compute network | Nosana GPU marketplace (Solana) |
+| Memory | SQLite (local) / pgvector (prod) |
+| Clients | Direct API + Telegram |
+| Custom plugin | \`@oracle/plugin-solana-intel\` |
+
+---
+
+## Custom Plugin: @oracle/plugin-solana-intel
+
+\`\`\`typescript
+// src/plugin-solana-intel/index.ts
+const researchProtocol: Action = {
+  name: "RESEARCH_PROTOCOL",
+  validate: async (runtime, message) =>
+    protocols.some(p => message.content.text.includes(p)),
+  handler: async (runtime, message, state, opts, callback) => {
+    const brief = await runtime.generateText({ context: "..." });
+    callback?.({ text: brief, action: "RESEARCH_PROTOCOL" });
+    return true;
+  }
+};
+\`\`\`
+
+### Actions
+
+| Action | Trigger | Output |
+|--------|---------|--------|
+| \`RESEARCH_PROTOCOL\` | "research [protocol]" | Risk brief with 🟢🟡🔴 rating |
+| \`ANALYZE_WALLET\` | Solana address detected | Holdings + liquidation risk |
+| \`GENERATE_BRIEF\` | "generate brief/report" | Structured brief from memory |
+
+---
+
+## Nosana Deployment
+
+\`\`\`json
+{
+  "version": "0.1",
+  "type": "container",
+  "ops": [{
+    "type": "container/run",
+    "args": {
+      "image": "your-hub/oracle-agent:latest",
+      "expose": 3000,
+      "env": {
+        "OPENAI_API_KEY": "nosana",
+        "OPENAI_API_URL": "https://inference.nosana.io/v1",
+        "LARGE_OPENAI_MODEL": "Qwen/Qwen2.5-72B-Instruct-AWQ"
+      },
+      "resources": { "cpu": 2000, "memory": 4096 }
+    }
+  }]
+}
+\`\`\`
+
+---
+
+## File Structure
+
+\`\`\`
+oracle-agent/
+├── character.json           ← ElizaOS character definition
+├── Dockerfile               ← Multi-stage production container  
+├── nosana-job.json          ← Nosana deployment spec
+├── .env.example             ← Environment template
+├── src/
+│   └── plugin-solana-intel/
+│       └── index.ts         ← Custom actions (TypeScript)
+└── README.md
+\`\`\`
+
+---
+
+## Troubleshooting
+
+**Inference endpoint unreachable**
+\`\`\`bash
+curl https://inference.nosana.io/v1/models \\
+  -H "Authorization: Bearer nosana"
+\`\`\`
+
+**Nosana job stays pending**
+\`\`\`bash
+nos balance    # check NOS balance
+# Get free credits at discord.gg/nosana
+\`\`\`
+
+*Part of the OpenClaw movement. MIT Licence.*`;
+
+/* ────────────────────────────────────────────────────────────────────────────
+   STATE
+   ──────────────────────────────────────────────────────────────────────────── */
+let conversationHistory = [];  // ElizaOS-style message history (role/content pairs)
+let currentMode = 'research';
+let msgCount = 0;
+let startTime = Date.now();
+let isThinking = false;
+
+/* ────────────────────────────────────────────────────────────────────────────
+   BOOT SEQUENCE — mimics ElizaOS v2 startup log
+   ──────────────────────────────────────────────────────────────────────────── */
+const BOOT_LINES = [
+  { text: "ElizaOS v2.0.0 — starting runtime...", cls: "dim",   delay: 300  },
+  { text: "▸ Loading character: characters/character.json", cls: "", delay: 600  },
+  { text: "  ✓ name: ORACLE", cls: "green", delay: 900  },
+  { text: "  ✓ modelProvider: openai (Nosana endpoint)", cls: "green", delay: 1100 },
+  { text: "  ✓ clients: direct, telegram", cls: "green", delay: 1300 },
+  { text: "▸ Initialising plugins...", cls: "dim",   delay: 1600 },
+  { text: "  ✓ @elizaos/plugin-bootstrap     [LOADED]", cls: "green", delay: 1800 },
+  { text: "  ✓ @elizaos/plugin-node          [LOADED]", cls: "green", delay: 1950 },
+  { text: "  ✓ @elizaos/plugin-web-search    [LOADED]", cls: "green", delay: 2100 },
+  { text: "  ✓ @elizaos/plugin-solana        [LOADED]", cls: "green", delay: 2250 },
+  { text: "  ✓ @elizaos/plugin-coinmarketcap [LOADED]", cls: "green", delay: 2400 },
+  { text: "  ✓ @oracle/plugin-solana-intel   [LOADED]", cls: "green", delay: 2550 },
+  { text: "▸ Connecting to Nosana inference...", cls: "dim",   delay: 2750 },
+  { text: "  endpoint: https://inference.nosana.io/v1", cls: "cyan",  delay: 3000 },
+  { text: "  model: Qwen/Qwen2.5-72B-Instruct-AWQ", cls: "cyan",  delay: 3150 },
+  { text: "  context window: 60,000 tokens", cls: "cyan",  delay: 3300 },
+  { text: "  ✓ LLM connected", cls: "green", delay: 3500 },
+  { text: "▸ Starting REST server on :3000", cls: "dim",   delay: 3650 },
+  { text: "  ✓ Database: SQLite ./data/oracle.sqlite", cls: "green", delay: 3800 },
+  { text: "", cls: "", delay: 3950 },
+  { text: "  ORACLE is online. Your agent is ready.", cls: "amber", delay: 4100 },
+];
+
+async function runBoot() {
+  const logo = document.getElementById('boot-logo');
+  logo.style.animation = 'appear .4s ease both';
+
+  const container = document.getElementById('boot-lines');
+
+  for (const line of BOOT_LINES) {
+    await new Promise(r => setTimeout(r, line.delay - (BOOT_LINES[0]?.delay || 0)));
+    const el = document.createElement('div');
+    el.className = `boot-line ${line.cls}`;
+    el.textContent = line.text;
+    el.style.animation = 'appear .15s ease both';
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // Wait a beat, then transition to main app
+  await new Promise(r => setTimeout(r, 700));
+
+  const boot = document.getElementById('boot');
+  boot.classList.add('fade');
+
+  const app = document.getElementById('app');
+  app.style.display = 'flex';
+  setTimeout(() => app.classList.add('visible'), 50);
+  setTimeout(() => { boot.style.display = 'none'; }, 700);
+
+  // Init UI
+  initPluginList();
+  setChips('research');
+  startUptimeClock();
+  addSysMsg('ORACLE online · ElizaOS v2 · Nosana GPU · Qwen3-27B');
+  addAgentMsg(`Hello. I'm **ORACLE** — your personal Web3 intelligence agent.\n\nI'm running on Nosana's decentralised GPU network, powered by Qwen3-27B with a 60k token context window. No Big Tech APIs involved.\n\nI can **research DeFi protocols**, **analyse on-chain data**, **search the live web**, and **draft content** for you.\n\nWhat do you need?`);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   PLUGIN LIST UI
+   ──────────────────────────────────────────────────────────────────────────── */
+function initPluginList() {
+  const list = document.getElementById('plugin-list');
+  list.innerHTML = PLUGINS.map(p => `
+    <div class="plugin-item">
+      <div class="plugin-dot" style="background:${p.color}"></div>
+      <span class="plugin-name">${p.name}</span>
+      <span class="plugin-status">✓</span>
+    </div>
+  `).join('');
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   MODE SWITCHING
+   ──────────────────────────────────────────────────────────────────────────── */
+function setMode(btn, mode) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = mode;
+
+  const chatArea = document.getElementById('chat-area');
+  const docsPanel = document.getElementById('docs-panel');
+
+  if (mode === 'docs') {
+    chatArea.style.display = 'none';
+    docsPanel.classList.add('visible');
+    document.getElementById('docs-content').innerHTML = renderMd(DOCS_MD);
+  } else {
+    chatArea.style.display = 'flex';
+    docsPanel.classList.remove('visible');
+    setChips(mode);
+    updateModeContext(mode);
+  }
+}
+
+function setChips(mode) {
+  const bar = document.getElementById('chips-bar');
+  const chips = MODE_CHIPS[mode] || [];
+  bar.innerHTML = chips.map(c =>
+    `<div class="chip" onclick="injectChip(this)">${c}</div>`
+  ).join('');
+}
+
+function injectChip(el) {
+  const text = el.textContent.replace(/^[^\w]+/, '').trim();
+  const input = document.getElementById('user-input');
+  input.value = text;
+  input.focus();
+  autoResize(input);
+}
+
+function updateModeContext(mode) {
+  // Inject a silent system context update when mode changes
+  const contexts = {
+    defi:     "The user has switched to DeFi Intel mode. Prioritise on-chain data, risk analysis, and Solana protocol intelligence.",
+    social:   "The user has switched to Social mode. Prioritise content drafting for Twitter/X, Discord, and Telegram.",
+    task:     "The user has switched to Task mode. Prioritise planning, checklists, reminders, and structured outputs.",
+    research: "The user has switched to Research mode. Prioritise deep research, synthesis, and source citation.",
+  };
+  if (contexts[mode]) {
+    // Store as a system context note (not visible in UI)
+    conversationHistory.push({ role: 'user', content: `[MODE CONTEXT]: ${contexts[mode]}` });
+    conversationHistory.push({ role: 'assistant', content: `Understood. Switching to ${mode} mode.` });
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   SIDEBAR TABS
+   ──────────────────────────────────────────────────────────────────────────── */
+function showSideTab(btn, panelId) {
+  document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   MESSAGING
+   ──────────────────────────────────────────────────────────────────────────── */
+function addSysMsg(text) {
+  const msgs = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'sysmsg';
+  el.textContent = `// ${text}`;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addUserMsg(text) {
+  const msgs = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg user';
+  el.innerHTML = `
+    <div class="msg-av">👤</div>
+    <div class="msg-body">
+      <div class="msg-bubble">${escHtml(text)}</div>
+      <div class="msg-meta">You · ${ts()}</div>
+    </div>`;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addAgentMsg(text, toolUsed) {
+  const msgs = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg agent';
+  el.innerHTML = `
+    <div class="msg-av">ORC</div>
+    <div class="msg-body">
+      ${toolUsed ? `<div class="tool-badge">⚡ web_search · ${toolUsed}</div>` : ''}
+      <div class="msg-bubble md">${renderMd(text)}</div>
+      <div class="msg-meta">ORACLE · ${ts()}</div>
+    </div>`;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg agent';
+  el.id = 'typing-el';
+  el.innerHTML = `
+    <div class="msg-av">ORC</div>
+    <div class="msg-body">
+      <div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div>
+    </div>`;
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing-el');
+  if (el) el.remove();
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   ANTHROPIC API CALL
+   Uses web_search tool for live data — mirrors how ElizaOS calls Nosana endpoint.
+   In production: replace this with the inference.nosana.io endpoint and Qwen3 model.
+   ──────────────────────────────────────────────────────────────────────────── */
+async function callOracle(userText) {
+  // Build message history (ElizaOS keeps rolling context window)
+  conversationHistory.push({ role: 'user', content: userText });
+
+  // Keep context window manageable — rolling last 20 turns
+  const recent = conversationHistory.slice(-20);
+
+  const body = {
+    model: 'claude-sonnet-4-20250514',   // In production: Qwen3-27B via Nosana
+    max_tokens: 1000,
+    system: CHARACTER.system,
+    tools: [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+      }
+    ],
+    messages: recent,
+  };
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+
+  // Extract text response and check if web search was used
+  let replyText = '';
+  let toolUsed = null;
+
+  for (const block of (data.content || [])) {
+    if (block.type === 'text') {
+      replyText += block.text;
+    }
+    if (block.type === 'tool_use' && block.name === 'web_search') {
+      toolUsed = block.input?.query || 'live query';
+    }
+  }
+
+  // Store assistant reply in conversation history
+  conversationHistory.push({ role: 'assistant', content: replyText });
+
+  return { text: replyText, toolUsed };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   SEND MESSAGE
+   ──────────────────────────────────────────────────────────────────────────── */
+async function send() {
+  if (isThinking) return;
+
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  autoResize(input);
+
+  addUserMsg(text);
+  msgCount++;
+  document.getElementById('msg-count').textContent = msgCount;
+
+  isThinking = true;
+  document.getElementById('send-btn').disabled = true;
+  showTyping();
+
+  try {
+    const { text: reply, toolUsed } = await callOracle(text);
+    removeTyping();
+    addAgentMsg(reply, toolUsed);
+
+    // Update memory panel
+    updateMemoryLog();
+
+  } catch (err) {
+    removeTyping();
+    addAgentMsg(`⚠️ **Connection error**\n\n\`${err.message}\`\n\nIn production, ORACLE connects directly to \`inference.nosana.io\` running Qwen3-27B.`);
+  }
+
+  isThinking = false;
+  document.getElementById('send-btn').disabled = false;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   MEMORY LOG — shows rolling conversation context (ElizaOS memory layer)
+   ──────────────────────────────────────────────────────────────────────────── */
+function updateMemoryLog() {
+  const log = document.getElementById('memory-log');
+  const visible = conversationHistory
+    .filter(m => !m.content?.startsWith?.('[MODE CONTEXT]'))
+    .slice(-10);
+
+  log.innerHTML = visible.map(m => `
+    <div class="mem-entry">
+      <span class="mem-role">${m.role === 'user' ? 'user' : 'oracle'}</span>:
+      ${escHtml(String(m.content).slice(0, 80))}${String(m.content).length > 80 ? '…' : ''}
+    </div>
+  `).join('');
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   UTILS
+   ──────────────────────────────────────────────────────────────────────────── */
+function ts() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function escHtml(t) {
+  return String(t)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+/** Lightweight markdown renderer for agent responses */
+function renderMd(text) {
+  return String(text)
+    // Escape HTML first
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    // Fenced code blocks
+    .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, c) => `<pre>${c.trim()}</pre>`)
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Tables (simple)
+    .replace(/\|(.+)\|\n\|[-| :]+\|\n([\s\S]*?)(?=\n\n|$)/g, (m, header, rows) => {
+      const ths = header.split('|').filter(Boolean).map(c => `<th>${c.trim()}</th>`).join('');
+      const trs = rows.trim().split('\n').map(row => {
+        const tds = row.split('|').filter(Boolean).map(c => `<td>${c.trim()}</td>`).join('');
+        return `<tr>${tds}</tr>`;
+      }).join('');
+      return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+    })
+    // Lists
+    .replace(/^[-•*] (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]+?<\/li>)+/g, m => `<ul>${m}</ul>`)
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr style="border-color:var(--border);margin:10px 0">')
+    // Line breaks
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 130) + 'px';
+}
+
+function startUptimeClock() {
+  setInterval(() => {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    const h = String(Math.floor(s / 3600)).padStart(2, '0');
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const sec = String(s % 60).padStart(2, '0');
+    const el = document.getElementById('uptime-val');
+    if (el) el.textContent = `${h}:${m}:${sec}`;
+  }, 1000);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   INPUT EVENT HANDLERS
+   ──────────────────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('user-input');
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  input.addEventListener('input', function() { autoResize(this); });
+
+  // Kick off boot sequence
+  runBoot();
+});
+</script>
+</body>
+</html>

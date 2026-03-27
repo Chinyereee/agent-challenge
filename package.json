@@ -1,0 +1,42 @@
+{
+  "name": "oracle-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ORACLE — On-chain Research & Analysis Cognitive Layer Engine. Powered by ElizaOS v1 + Nosana's decentralised GPU network.",
+  "type": "module",
+  "scripts": {
+    "start": "elizaos start --character ./character.json",
+    "dev": "elizaos dev --character ./character.json",
+    "build": "tsc",
+    "docker:build": "docker build -t nosana-oracle:latest .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env nosana-oracle:latest"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.0.0",
+    "@elizaos/plugin-bootstrap": "^1.0.0",
+    "@elizaos/plugin-openai": "^1.0.0",
+    "@elizaos/plugin-solana": "^1.0.0",
+    "@elizaos/plugin-telegram": "^1.0.0"
+  },
+  "devDependencies": {
+    "@elizaos/cli": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=23.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "keywords": [
+    "elizaos",
+    "agent",
+    "solana",
+    "defi",
+    "nosana",
+    "ai",
+    "web3"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.0"
+}

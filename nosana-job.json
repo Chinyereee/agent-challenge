@@ -1,0 +1,40 @@
+{
+  "version": "0.1",
+  "type": "container",
+  "meta": {
+    "trigger": "cli",
+    "description": "ORACLE — On-chain Research & Analysis Cognitive Layer Engine on Nosana GPU network"
+  },
+  "ops": [
+    {
+      "type": "container/run",
+      "id": "oracle-agent",
+      "args": {
+        "image": "chinyereee/oracle-agent:latest",
+        "gpu": false,
+        "expose": 3000,
+        "cmd": [
+          "bun",
+          "run",
+          "node_modules/@elizaos/cli/dist/index.js",
+          "start",
+          "--character",
+          "./character.json"
+        ],
+        "env": {
+          "OPENAI_API_KEY": "nosana",
+          "OPENAI_API_URL": "https://inference.nosana.io/v1",
+          "SMALL_OPENAI_MODEL": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+          "LARGE_OPENAI_MODEL": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+          "SERVER_PORT": "3000",
+          "LOG_LEVEL": "info",
+          "NODE_ENV": "production"
+        },
+        "resources": {
+          "cpu": 2000,
+          "memory": 4096
+        }
+      }
+    }
+  ]
+}

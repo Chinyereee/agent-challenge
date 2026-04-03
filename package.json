@@ -14,7 +14,7 @@
   "dependencies": {
     "@elizaos/core": "^1.0.0",
     "@elizaos/plugin-bootstrap": "^1.0.0",
-    "@elizaos/plugin-openai": "^1.0.0",
+    "@elizaos/plugin-openrouter": "^1.0.0",
     "@elizaos/plugin-telegram": "^1.0.0"
   },
   "devDependencies": {

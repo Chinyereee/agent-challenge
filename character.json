@@ -3,7 +3,7 @@
   "username": "oracle_agent",
   "plugins": [
     "@elizaos/plugin-bootstrap",
-    "@elizaos/plugin-openai",
+    "@elizaos/plugin-openrouter",
     "@elizaos/plugin-telegram"
   ],
   "settings": {

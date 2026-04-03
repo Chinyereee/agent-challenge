@@ -4,7 +4,6 @@
   "plugins": [
     "@elizaos/plugin-bootstrap",
     "@elizaos/plugin-openai",
-    "@elizaos/plugin-solana",
     "@elizaos/plugin-telegram"
   ],
   "settings": {

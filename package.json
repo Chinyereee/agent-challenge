@@ -5,20 +5,21 @@
   "description": "ORACLE — On-chain Research & Analysis Cognitive Layer Engine. Powered by ElizaOS v1 + Nosana's decentralised GPU network.",
   "type": "module",
   "scripts": {
-    "start": "elizaos start --character ./character.json",
-    "dev": "elizaos dev --character ./character.json",
     "build": "tsc",
-    "docker:build": "docker build -t nosana-oracle:latest .",
-    "docker:run": "docker run -p 3000:3000 --env-file .env nosana-oracle:latest"
+    "start": "node dist/index.js",
+    "dev": "node --watch dist/index.js",
+    "build:start": "tsc && node dist/index.js",
+    "docker:build": "docker build -t chinyereee/oracle-agent:latest .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env chinyereee/oracle-agent:latest"
   },
   "dependencies": {
     "@elizaos/core": "^1.0.0",
     "@elizaos/plugin-bootstrap": "^1.0.0",
     "@elizaos/plugin-openrouter": "^1.0.0",
-    "@elizaos/plugin-telegram": "^1.0.0"
+    "@elizaos/plugin-telegram": "^1.0.0",
+    "@elizaos/server": "^1.0.0"
   },
   "devDependencies": {
-    "@elizaos/cli": "^1.0.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   },

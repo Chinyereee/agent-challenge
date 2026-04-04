@@ -1,12 +1,40 @@
 /**
- * ORACLE Plugin Entry Point
+ * ORACLE Agent — Node.js Bootstrap
  *
- * Exports the custom Solana intelligence plugin so the ElizaOS CLI
- * can auto-discover and register it when running:
- *   elizaos start --character ./character.json
- *
- * ElizaOS Plugin Docs: https://elizaos.github.io/eliza/docs/core/plugins
+ * Starts the ElizaOS AgentServer directly using Node.js (no bun required).
+ * Compatible with node:23-slim on Linux and Windows.
  */
 
-export { default } from "./plugin-solana-intel/index.js";
-export * from "./plugin-solana-intel/index.js";
+import { AgentServer } from "@elizaos/server";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import oracleSolanaPlugin from "./plugin-solana-intel/index.js";
+
+const characterPath = resolve(process.cwd(), "character.json");
+const character = JSON.parse(readFileSync(characterPath, "utf-8"));
+
+const port = parseInt(process.env.SERVER_PORT ?? "3000", 10);
+
+console.log("🚀 Booting ORACLE agent...");
+console.log(`📡 Port: ${port}`);
+
+const server = new AgentServer();
+
+server
+  .start({
+    port,
+    agents: [
+      {
+        character,
+        plugins: [oracleSolanaPlugin],
+      },
+    ],
+    dataDir: "./data",
+  })
+  .then(() => {
+    console.log(`✅ ORACLE agent running on http://localhost:${port}`);
+  })
+  .catch((err: unknown) => {
+    console.error("❌ Failed to start ORACLE agent:", err);
+    process.exit(1);
+  });

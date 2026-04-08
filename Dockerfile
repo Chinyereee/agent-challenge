@@ -1,9 +1,11 @@
-# ─── ORACLE Agent — Node.js only (no bun) ────────────────────────────────────
+# ─── ORACLE Agent — Node.js only (no bun, no curl) ───────────────────────────
 FROM node:23-slim
 
-# Install pnpm + curl (for healthcheck)
-RUN npm install -g pnpm@10 && apt-get update && apt-get install -y --no-install-recommends curl \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+ENV DATABASE_URL=sqlite:./data/oracle.sqlite
+
+# Install pnpm only — no apt-get needed (healthcheck uses Node.js)
+RUN npm install -g pnpm@10
 
 WORKDIR /app
 
@@ -24,7 +26,8 @@ RUN mkdir -p /app/data
 # ─── Runtime ─────────────────────────────────────────────────────────────────
 EXPOSE 3000
 
+# Pure Node.js healthcheck — no curl dependency
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD node -e "require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["node", "dist/index.js"]

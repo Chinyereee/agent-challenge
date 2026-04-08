@@ -3,6 +3,9 @@ FROM node:23-slim
 
 ENV NODE_ENV=production
 ENV DATABASE_URL=sqlite:./data/oracle.sqlite
+ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000
+ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
+ENV NPM_CONFIG_FETCH_RETRIES=5
 
 # Install pnpm only — no apt-get needed (healthcheck uses Node.js)
 RUN npm install -g pnpm@10

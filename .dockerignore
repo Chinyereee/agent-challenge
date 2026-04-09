@@ -9,11 +9,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment files
+# Environment files — keep .env.example (it's a safe template), exclude secrets
+.env
 .env.local
-.env.example
 .env.*.local
 .env.*
+!.env.example
 
 # Build output
 .mastra/
@@ -37,6 +38,10 @@ LICENSE
 # Docker
 Dockerfile
 .dockerignore
+
+# Runtime data — generated at startup, should not be in image
+data/
+*.log
 
 # Temporary files
 *.tmp

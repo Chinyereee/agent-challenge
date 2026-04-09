@@ -13,22 +13,13 @@
         "image": "chinyereee/oracle-agent:latest",
         "gpu": false,
         "expose": 3000,
-        "cmd": [
-          "bun",
-          "run",
-          "node_modules/@elizaos/cli/dist/index.js",
-          "start",
-          "--character",
-          "./character.json"
-        ],
+        "cmd": ["node", "dist/index.js"],
         "env": {
-          "OPENAI_API_KEY": "nosana",
-          "OPENAI_API_URL": "https://inference.nosana.io/v1",
-          "SMALL_OPENAI_MODEL": "Qwen/Qwen2.5-72B-Instruct-AWQ",
-          "LARGE_OPENAI_MODEL": "Qwen/Qwen2.5-72B-Instruct-AWQ",
+          "OPENROUTER_API_KEY": "YOUR_OPENROUTER_API_KEY",
           "SERVER_PORT": "3000",
           "LOG_LEVEL": "info",
-          "NODE_ENV": "production"
+          "NODE_ENV": "production",
+          "DATABASE_URL": "sqlite:./data/oracle.sqlite"
         },
         "resources": {
           "cpu": 2000,

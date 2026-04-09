@@ -2,7 +2,7 @@
 
 **O**n-chain **R**esearch & **A**nalysis **C**ognitive **L**ayer **E**ngine
 
-Built on [ElizaOS v2](https://github.com/elizaos/eliza) · Deployed on [Nosana](https://nosana.io) · Powered by Qwen3-27B
+Built on [ElizaOS v1](https://github.com/elizaos/eliza) · Deployed on [Nosana](https://nosana.io) · Powered by OpenRouter (Qwen3-27B / any model)
 
 ---
 
@@ -10,13 +10,49 @@ Built on [ElizaOS v2](https://github.com/elizaos/eliza) · Deployed on [Nosana](
 
 ORACLE is a personal AI agent that runs 24/7 on Nosana's decentralised GPU network, giving you:
 
-- **Deep DeFi research** — audit any Solana protocol in seconds
+- **Deep DeFi research** — audit any Solana protocol in seconds with risk ratings
 - **Wallet intelligence** — on-chain position and liquidation analysis
 - **Structured briefs** — executive-level summaries with source citations
-- **Real-time alerts** — Telegram notifications for protocol risks
+- **Telegram notifications** — real-time alerts for protocol risks (optional)
 - **Content pipeline** — draft threads, reports, and governance posts
 
 No OpenAI. No Google. Your agent, your data, your stack.
+
+---
+
+## Architecture
+
+```
+You (Browser / Telegram)
+        │
+        ▼
+┌───────────────────────────────────┐
+│  Pre-boot Health Server (instant) │  ◄── responds in <100ms on startup
+│  releases port → AgentServer      │
+└─────────────┬─────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────┐
+│              ElizaOS v1 AgentServer                  │
+│                                                      │
+│  character.json  ──►  persona, system prompt, style  │
+│                                                      │
+│  Plugins:                                            │
+│    @elizaos/plugin-bootstrap  ◄── core message loop  │
+│    @elizaos/plugin-openrouter ◄── LLM routing        │
+│    @elizaos/plugin-telegram   ◄── bot + alerts       │
+│    @oracle/plugin-solana-intel◄── custom actions     │
+│       ├── RESEARCH_PROTOCOL                          │
+│       ├── ANALYZE_WALLET                             │
+│       └── GENERATE_BRIEF                            │
+└─────────────────────┬───────────────────────────────┘
+                      │
+                      ▼
+           OpenRouter API / Nosana Inference
+                      │
+              Qwen3-27B-Instruct
+           (or any OpenRouter model)
+```
 
 ---
 
@@ -24,11 +60,26 @@ No OpenAI. No Google. Your agent, your data, your stack.
 
 | Tool | Version | Install |
 |------|---------|---------|
-| Node.js | 23+ | `nvm install 23` |
-| pnpm | 9+ | `npm i -g pnpm` |
-| Docker | 24+ | [docker.com](https://docker.com) |
+| Node.js | 23+ | `nvm install 23` or [nodejs.org](https://nodejs.org) |
+| pnpm | 10+ | `npm i -g pnpm@10` |
+| Docker Desktop | 24+ | [docker.com](https://docker.com) |
 | Nosana CLI | latest | `npm i -g @nosana/cli` |
-| Solana wallet | — | [Phantom](https://phantom.app) or `solana-keygen` |
+| OpenRouter account | — | [openrouter.ai](https://openrouter.ai) (free tier available) |
+
+> **Windows users**: Run all commands in PowerShell or Git Bash. Bun is not required.
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENROUTER_API_KEY` | **Yes** | Your OpenRouter API key (`sk-or-v1-...`) |
+| `SERVER_PORT` | No | HTTP port (default: `3000`) |
+| `DATABASE_URL` | No | DB path (default: PGlite WASM; set `sqlite:./data/oracle.sqlite` for faster startup) |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token for alerts |
+| `LOG_LEVEL` | No | Logging verbosity: `error`, `warn`, `info`, `debug` (default: `info`) |
+| `NODE_ENV` | No | Set to `production` in Docker (already set in Dockerfile) |
 
 ---
 
@@ -37,10 +88,9 @@ No OpenAI. No Google. Your agent, your data, your stack.
 ### 1 — Clone and Install
 
 ```bash
-git clone https://github.com/your-org/oracle-agent.git
-cd oracle-agent
+git clone https://github.com/Chinyereee/agent-challenge.git
+cd agent-challenge
 pnpm install
-pnpm build
 ```
 
 ### 2 — Configure Environment
@@ -49,122 +99,158 @@ pnpm build
 cp .env.example .env
 ```
 
-Edit `.env` with your keys:
+Edit `.env`:
 
 ```bash
-# LLM — Nosana-hosted Qwen3 (no OpenAI account needed)
-OPENAI_API_KEY=nosana
-OPENAI_API_URL=https://inference.nosana.io/v1
-SMALL_OPENAI_MODEL=Qwen/Qwen2.5-72B-Instruct-AWQ
-LARGE_OPENAI_MODEL=Qwen/Qwen2.5-72B-Instruct-AWQ
-
-# Optional: Telegram bot for alerts
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
+# Optional
 TELEGRAM_BOT_TOKEN=your_token
-
-# Optional: Helius for live on-chain data
-HELIUS_API_KEY=your_key
-
-# Optional: CoinMarketCap for prices
-CMC_API_KEY=your_key
+DATABASE_URL=sqlite:./data/oracle.sqlite
 ```
 
-> **Never commit `.env` to git.** It's already in `.gitignore`.
+> Get a free OpenRouter key at [openrouter.ai/keys](https://openrouter.ai/keys).
+> Never commit `.env` to git — it is in `.gitignore`.
 
-### 3 — Run Locally
+### 3 — Build and Run Locally
 
 ```bash
-# Interactive terminal mode
-pnpm start --characters="characters/character.json"
+pnpm build
+node dist/index.js
+```
 
-# Test the REST API
+Open [http://localhost:3000](http://localhost:3000) to chat with ORACLE.
+
+### 4 — Test the API
+
+```bash
+# Health check
+curl http://localhost:3000/health
+
+# Send a message
 curl -X POST http://localhost:3000/api/message \
   -H "Content-Type: application/json" \
   -d '{"userId":"me","text":"Research the Drift protocol"}'
 ```
 
-### 4 — Deploy to Nosana
+---
+
+## Docker Deployment
+
+### Build and Push Image
 
 ```bash
-# Set up wallet
-nos address   # copy your Solana address
-# Fund with NOS tokens or claim hackathon credits from Nosana Discord
+docker build -t chinyereee/oracle-agent:latest .
+docker push chinyereee/oracle-agent:latest
+```
 
-# Build and push Docker image
-docker build -t your-dockerhub/oracle-agent:latest .
-docker push your-dockerhub/oracle-agent:latest
+### Run Locally with Docker
 
-# Update image name in nosana-job.json, then deploy
-nos job post --file nosana-job.json \
+```bash
+docker run -p 3000:3000 \
+  -e OPENROUTER_API_KEY=sk-or-v1-your-key \
+  chinyereee/oracle-agent:latest
+```
+
+---
+
+## Nosana Deployment
+
+ORACLE runs on Nosana's decentralised GPU network using the job spec in `nosana-job.json`.
+
+### Step 1 — Install Nosana CLI and Create Wallet
+
+```bash
+npm install -g @nosana/cli
+nosana address          # creates a new wallet and prints your Solana address
+```
+
+### Step 2 — Fund Your Wallet
+
+Options:
+- **Hackathon credits**: Join [discord.gg/nosana](https://discord.gg/nosana) and ask in `#agent-challenge` for free NOS tokens
+- **Buy NOS**: Available on Raydium and Jupiter on Solana
+- **Testnet faucet**: `nosana faucet` (testnet only)
+
+Check balance:
+```bash
+nosana balance
+```
+
+### Step 3 — Update nosana-job.json
+
+Edit `nosana-job.json` and replace `YOUR_OPENROUTER_API_KEY` with your actual key:
+
+```json
+"env": {
+  "OPENROUTER_API_KEY": "sk-or-v1-your-key-here"
+}
+```
+
+### Step 4 — Deploy
+
+```bash
+nosana job post --file nosana-job.json \
   --market 97G9NnvBDQ2WpKu6fasoMsAKmfj63C9rhysJnkeWodAf
-
-# Monitor
-nos job get <JOB_ID>
-nos job logs <JOB_ID> --follow
 ```
+
+### Step 5 — Monitor
+
+```bash
+nosana job get <JOB_ID>
+nosana job logs <JOB_ID> --follow
+```
+
+The deployment URL is shown in `nosana job get` output under `expose`.
 
 ---
 
-## Architecture
+## Plugin API Reference
 
-```
-Your Laptop / Telegram
-        │
-        ▼
-  ElizaOS v2 Runtime  ◄─── character.json (persona + plugins)
-        │
-   ┌────┴────┐
-   │ Plugins  │
-   │─────────│
-   │bootstrap│   ◄── core message loop, memory, evaluators
-   │node     │   ◄── file I/O, REST server
-   │web-search│  ◄── DuckDuckGo / SerpAPI
-   │solana   │   ◄── RPC, wallet, SPL tokens
-   │coinmktcp│   ◄── price feeds
-   │telegram │   ◄── bot client + alerts
-   │solana-  │   ◄── ORACLE custom plugin (this repo)
-   │intel    │
-   └────┬────┘
-        │
-        ▼
-  Nosana GPU Job  ──►  inference.nosana.io/v1
-                             │
-                        Qwen3-27B AWQ-4bit
-                      (60k token context)
-```
+### @oracle/plugin-solana-intel
 
----
+Custom ElizaOS plugin in [src/plugin-solana-intel/index.ts](src/plugin-solana-intel/index.ts).
 
-## Plugin: @oracle/plugin-solana-intel
-
-Custom ElizaOS plugin in `src/plugin-solana-intel/index.ts`.
+#### Actions
 
 | Action | Trigger | Description |
 |--------|---------|-------------|
-| `RESEARCH_PROTOCOL` | "research [protocol]" | Full protocol risk brief |
-| `ANALYZE_WALLET` | Solana address in message | Wallet holdings + liquidation risk |
-| `GENERATE_BRIEF` | "generate brief / report" | Structured brief from conversation context |
+| `RESEARCH_PROTOCOL` | Message contains a protocol name + "research" | Full risk brief: TVL, audits, known risks, 🟢/🟡/🔴 rating |
+| `ANALYZE_WALLET` | Message contains a Solana base58 address | Holdings, DeFi positions, liquidation risk |
+| `GENERATE_BRIEF` | Message contains "brief", "report", "summarize", or "research" | Structured markdown brief from conversation context |
 
-### Adding a New Action
+#### Supported Protocols (RESEARCH_PROTOCOL)
+
+Raydium, Orca, Jupiter, Drift, Marginfi, Marinade, Jito, Kamino, Meteora, Tensor
+
+#### Adding a Custom Action
 
 ```typescript
-import { Action } from "@elizaos/core";
+import { Action, elizaLogger } from "@elizaos/core";
 
 const myAction: Action = {
   name: "MY_ACTION",
   similes: ["MY_ACTION_ALIAS"],
   description: "What this action does",
-  validate: async (runtime, message) => {
-    // Return true when this action should fire
-    return message.content.text?.includes("trigger keyword");
+
+  validate: async (_runtime, message) => {
+    const text = (message.content as { text?: string }).text ?? "";
+    return text.includes("trigger keyword");
   },
-  handler: async (runtime, message, state, options, callback) => {
-    const result = await runtime.generateText({ context: "..." });
-    if (callback) callback({ text: result });
-    return true;
+
+  handler: async (runtime, message, _state, _options, callback) => {
+    elizaLogger.info("[ORACLE] MY_ACTION triggered");
+    try {
+      const result = await runtime.generateText("Your prompt here");
+      if (callback) await callback({ text: result.text, action: "MY_ACTION" });
+    } catch (err) {
+      elizaLogger.error("[ORACLE] MY_ACTION failed:", err);
+      if (callback) await callback({ text: "⚠️ Error. Please try again.", action: "MY_ACTION" });
+    }
   },
+
   examples: [[
-    { user: "user", content: { text: "trigger" } },
-    { user: "ORACLE", content: { text: "response" } }
+    { name: "user", content: { text: "trigger keyword" } },
+    { name: "ORACLE", content: { text: "response", action: "MY_ACTION" } }
   ]]
 };
 ```
@@ -174,45 +260,71 @@ const myAction: Action = {
 ## File Structure
 
 ```
-oracle-agent/
-├── character.json              # ElizaOS v2 character definition
-├── Dockerfile                  # Multi-stage production container
-├── nosana-job.json             # Nosana deployment spec
-├── .env.example                # Environment template
-├── src/
-│   └── plugin-solana-intel/
-│       └── index.ts            # Custom ElizaOS plugin + actions
-├── packages/                   # Cloned from elizaos/eliza monorepo
-│   ├── core/
-│   ├── cli/
-│   └── plugin-*/
-└── README.md
+agent-challenge/
+├── character.json              # ORACLE persona, system prompt, plugins
+├── Dockerfile                  # Production container (Node.js 23, no bun)
+├── .dockerignore               # Excludes node_modules, .env, dist from build context
+├── nosana-job.json             # Nosana deployment spec (CPU: 2000m, RAM: 4096MB)
+├── .env.example                # Environment variable template
+├── package.json                # Dependencies and scripts
+├── tsconfig.json               # TypeScript config (ESNext, Bundler resolution)
+├── pnpm-lock.yaml              # Locked dependency tree
+└── src/
+    ├── index.ts                # Agent bootstrap + pre-boot health server
+    └── plugin-solana-intel/
+        └── index.ts            # Custom actions: RESEARCH_PROTOCOL, ANALYZE_WALLET, GENERATE_BRIEF
 ```
 
 ---
 
-## Troubleshooting
+## Known Issues & Solutions
 
-**LLM not responding**
+### Agent takes 15-45 seconds to become responsive
+
+**Why**: ElizaOS initialises its database, loads plugins, and negotiates with the LLM endpoint before accepting messages.
+
+**Fix**: ORACLE includes a pre-boot HTTP server that responds to health checks instantly. You can chat once the page loads — messages sent during boot are queued and processed once ElizaOS is ready.
+
+### "Answers before questions" UI quirk
+
+**Why**: The ElizaOS web UI sometimes renders the agent's reply above the triggering user message. This is a message-ordering bug in `@elizaos/client` and does not affect the API or agent logic.
+
+**Workaround**: Use the REST API directly (`/api/message`) for production integrations. The conversation order in the API response is always correct.
+
+### Docker build times out on heavy packages (pdfjs-dist, @napi-rs/canvas)
+
+**Why**: These are optional transitive dependencies pulled in by `@elizaos/*`.
+
+**Fix**: The Dockerfile uses `pnpm install --no-optional` to skip them. The retry env vars (`NPM_CONFIG_FETCH_RETRIES=5`) handle intermittent registry timeouts.
+
+### Nosana job stays in "pending" state
+
+**Why**: Usually insufficient NOS balance or no available GPU nodes in the market.
+
+**Fix**:
 ```bash
-curl https://inference.nosana.io/v1/models -H "Authorization: Bearer nosana"
-# Should list Qwen models
+nosana balance          # check NOS + SOL balance
+nosana market get 97G9NnvBDQ2WpKu6fasoMsAKmfj63C9rhysJnkeWodAf
+# Get free credits in Nosana Discord: discord.gg/nosana
 ```
 
-**pnpm install fails**
+### pnpm install fails on Node.js < 23
+
 ```bash
-nvm use 23
+nvm install 23 && nvm use 23
 pnpm store prune
 rm -rf node_modules
 pnpm install
 ```
 
-**Nosana job pending too long**
-```bash
-nos balance                    # check NOS balance
-nos market get 97G9NnvBDQ2WpKu6fasoMsAKmfj63C9rhysJnkeWodAf
-# Get free credits: discord.gg/nosana
-```
+---
+
+## Getting Free Nosana Credits
+
+1. Join the Nosana Discord: [discord.gg/nosana](https://discord.gg/nosana)
+2. Go to the `#agent-challenge` or `#faucet` channel
+3. Request hackathon credits — the team provides NOS tokens for challenge participants
+4. Alternatively, follow [@nosana_ci](https://twitter.com/nosana_ci) on Twitter for airdrop announcements
 
 ---
 
@@ -222,4 +334,4 @@ MIT — Your agent, your rules.
 
 ---
 
-*Built for the ElizaOS × Nosana hackathon. Part of the OpenClaw movement.*
+*Built for the ElizaOS × Nosana Agent Challenge. ORACLE — decentralised AI for on-chain intelligence.*

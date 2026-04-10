@@ -7,12 +7,19 @@
  *   2. Parse character.json from disk.
  *   3. Shut down the pre-boot server to free the port.
  *   4. Start the full ElizaOS AgentServer, which takes over the port.
+ *   5. Register a static-file middleware for the custom ORACLE frontend (public/).
  *
  * Why the pre-boot server is needed:
  *   ElizaOS initialises its database, loads plugins, compiles prompts, and
  *   negotiates with the LLM endpoint before it starts listening on any port.
  *   Without this server, Docker/Nosana marks the container unhealthy and
  *   restarts it before ElizaOS ever finishes booting.
+ *
+ * Custom frontend (public/index.html):
+ *   A single-file chat UI served at GET /. It talks to the ElizaOS REST API
+ *   at /api/agents/:id/message. We mount it via AgentServer.registerMiddleware()
+ *   which inserts a handler into the Express pipeline before ElizaOS's wildcard
+ *   routes, without needing a separate express import (avoiding v4/v5 conflicts).
  *
  * Known ElizaOS UI quirk — "answers before questions":
  *   The ElizaOS web UI sometimes renders the agent's response above the
@@ -27,11 +34,30 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AgentServer } from "@elizaos/server";
 import type { Character } from "@elizaos/core";
 import oracleSolanaPlugin from "./plugin-solana-intel/index.js";
+
+/** Resolve __dirname equivalent in ESM. */
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+/** Absolute path to the public/ directory (one level up from dist/). */
+const publicDir = join(__dirname, "..", "public");
+
+/** MIME types for files that may be served from public/. */
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".json": "application/json",
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
+  ".svg":  "image/svg+xml",
+  ".ico":  "image/x-icon",
+};
 
 /** Port the agent (and pre-boot health server) will listen on. */
 const port = parseInt(process.env.SERVER_PORT ?? "3000", 10);
@@ -54,7 +80,7 @@ const preBootServer = createServer((_req, res) => {
 });
 
 // Bind the pre-boot server and wait until the port is actually open.
-await new Promise<void>((resolve) => preBootServer.listen(port, resolve));
+await new Promise<void>((ok) => preBootServer.listen(port, ok));
 console.log(`⚡ Health check live on :${port} — ElizaOS loading...`);
 
 // ── Step 2: Load character definition ────────────────────────────────────────
@@ -85,9 +111,7 @@ const agentServer = new AgentServer();
 await agentServer
   .start({
     port,
-    // Pass the character definition and our custom Solana intelligence plugin.
     agents: [{ character, plugins: [oracleSolanaPlugin] }],
-    // Directory for SQLite / PGlite database files and memory storage.
     dataDir: "./data",
   })
   .catch((err: unknown) => {
@@ -95,6 +119,33 @@ await agentServer
     process.exit(1);
   });
 
+// ── Step 5: Mount custom frontend via registerMiddleware ──────────────────────
+// registerMiddleware inserts a function into AgentServer's Express pipeline.
+// We handle two cases:
+//   GET /         → serve public/index.html  (the ORACLE chat UI)
+//   GET /foo.css  → serve any file in public/ by name
+// All other paths (e.g. /api/*) pass through to ElizaOS handlers via next().
+agentServer.registerMiddleware((req: any, res: any, next: any) => {
+  const urlPath: string = (req.url ?? "/").split("?")[0];
+
+  // Resolve to a file path; map root to index.html
+  const relative = urlPath === "/" ? "index.html" : urlPath.replace(/^\//, "");
+
+  // Reject any path traversal attempts
+  if (relative.includes("..")) { next(); return; }
+
+  const filePath = join(publicDir, relative);
+
+  // Only serve files that actually exist in public/
+  if (!existsSync(filePath) || !statSync(filePath).isFile()) { next(); return; }
+
+  const mimeType = MIME[extname(filePath)] ?? "application/octet-stream";
+  res.setHeader("Content-Type", mimeType);
+  res.setHeader("Cache-Control", "no-cache");
+  createReadStream(filePath).pipe(res);
+});
+
 console.log(
   `✅ ORACLE ready on http://localhost:${port} (boot: ${Date.now() - bootStart}ms)`
 );
+console.log(`🌐 Custom frontend: http://localhost:${port}/`);

@@ -29,8 +29,9 @@ COPY package.json pnpm-lock.yaml ./
 # Skip optional deps (canvas, pdfjs-dist, etc.) that are unused and slow to fetch.
 RUN pnpm install --frozen-lockfile --no-optional
 
-# ── Copy source and config ─────────────────────────────────────────────────────
+# ── Copy source, config, and frontend ─────────────────────────────────────────
 COPY src/           ./src/
+COPY public/        ./public/
 COPY character.json tsconfig.json ./
 
 # ── Compile TypeScript → dist/ ─────────────────────────────────────────────────

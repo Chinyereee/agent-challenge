@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ORACLE — On-chain Research Agent</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0e1a;
+      --surface:   #111827;
+      --border:    #1f2d45;
+      --accent:    #00d4ff;
+      --accent2:   #7c3aed;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --user-bg:   #1e3a5f;
+      --agent-bg:  #131f35;
+      --danger:    #ef4444;
+      --success:   #22c55e;
+      --warn:      #f59e0b;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .oracle-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 900;
+      color: #fff;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+
+    .header-text h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+    }
+
+    .header-text p {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .status-dot {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warn);
+      animation: pulse 2s infinite;
+    }
+    .dot.online { background: var(--success); animation: none; }
+    .dot.error  { background: var(--danger);  animation: none; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    /* ── Capabilities bar ── */
+    .caps-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .cap-tag {
+      font-size: 0.68rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .cap-tag.active { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Messages area ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      scroll-behavior: smooth;
+    }
+
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Message bubbles ── */
+    .msg {
+      display: flex;
+      gap: 10px;
+      max-width: 820px;
+    }
+
+    .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+    .msg.agent { align-self: flex-start; }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .msg.user  .avatar { background: var(--accent2); color: #fff; }
+    .msg.agent .avatar { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      line-height: 1.65;
+      max-width: 680px;
+    }
+
+    .msg.user  .bubble { background: var(--user-bg); border-bottom-right-radius: 3px; }
+    .msg.agent .bubble { background: var(--agent-bg); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+
+    /* Markdown rendering inside bubbles */
+    .bubble h1, .bubble h2, .bubble h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin: 10px 0 6px;
+      color: var(--accent);
+    }
+    .bubble h1:first-child, .bubble h2:first-child, .bubble h3:first-child { margin-top: 0; }
+    .bubble p { margin-bottom: 8px; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble ul, .bubble ol { padding-left: 20px; margin-bottom: 8px; }
+    .bubble li { margin-bottom: 4px; }
+    .bubble code {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: rgba(0,212,255,0.08);
+      border: 1px solid rgba(0,212,255,0.15);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    .bubble pre {
+      background: #0d1520;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .bubble pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 0.8rem;
+    }
+    .bubble strong { color: #f1f5f9; }
+    .bubble em { color: var(--muted); font-style: italic; }
+    .bubble a { color: var(--accent); text-decoration: none; }
+    .bubble a:hover { text-decoration: underline; }
+    .bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+    .bubble blockquote {
+      border-left: 3px solid var(--accent2);
+      padding-left: 12px;
+      color: var(--muted);
+      margin: 8px 0;
+    }
+
+    /* Risk badges */
+    .bubble .risk-green { color: #22c55e; }
+    .bubble .risk-yellow { color: #f59e0b; }
+    .bubble .risk-red   { color: #ef4444; }
+
+    .msg-time {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+    .msg.user .msg-time { text-align: right; }
+
+    /* Typing indicator */
+    .typing-bubble {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 14px 18px;
+    }
+    .typing-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: bounce 1.2s infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40%            { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* ── Welcome screen ── */
+    #welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 20px;
+      text-align: center;
+      padding: 40px;
+    }
+
+    #welcome .oracle-big {
+      width: 72px;
+      height: 72px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      font-weight: 900;
+      color: #fff;
+      font-family: var(--font-mono);
+      box-shadow: 0 0 40px rgba(0,212,255,0.25);
+    }
+
+    #welcome h2 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    #welcome p {
+      color: var(--muted);
+      max-width: 460px;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+
+    .starter-prompts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      max-width: 600px;
+    }
+
+    .starter {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+    }
+    .starter:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(0,212,255,0.05);
+    }
+    .starter strong { display: block; color: var(--text); margin-bottom: 2px; font-size: 0.82rem; }
+
+    /* ── Input area ── */
+    .input-area {
+      padding: 16px 24px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 10px 10px 16px;
+      transition: border-color 0.15s;
+    }
+    .input-row:focus-within { border-color: var(--accent); }
+
+    #msgInput {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 0.875rem;
+      line-height: 1.5;
+      resize: none;
+      min-height: 22px;
+      max-height: 140px;
+      font-family: inherit;
+    }
+    #msgInput::placeholder { color: var(--muted); }
+
+    #sendBtn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #sendBtn:hover:not(:disabled) { opacity: 0.9; transform: scale(1.05); }
+    #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #sendBtn svg { width: 16px; height: 16px; }
+
+    .input-hint {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 7px;
+      padding: 0 4px;
+    }
+
+    /* ── Error toast ── */
+    #errorToast {
+      display: none;
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f0a0a;
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 0.8rem;
+      z-index: 100;
+      max-width: 480px;
+      text-align: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      header { padding: 12px 16px; }
+      .caps-bar { display: none; }
+      #messages { padding: 14px 12px; }
+      .input-area { padding: 12px 12px 16px; }
+      .bubble { font-size: 0.82rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="oracle-logo">⬡</div>
+  <div class="header-text">
+    <h1>ORACLE</h1>
+    <p>On-chain Research &amp; Analysis Cognitive Layer Engine · Nosana GPU Network</p>
+  </div>
+  <div class="status-dot">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Connecting…</span>
+  </div>
+</header>
+
+<!-- ── Capability tags ── -->
+<div class="caps-bar">
+  <span class="cap-tag active">DeFi Research</span>
+  <span class="cap-tag active">Wallet Analysis</span>
+  <span class="cap-tag active">Risk Briefs</span>
+  <span class="cap-tag">Solana Protocols</span>
+  <span class="cap-tag">Governance Intel</span>
+  <span class="cap-tag">Content Drafting</span>
+  <span class="cap-tag">ZK &amp; L2s</span>
+  <span class="cap-tag" id="modelTag">Qwen3-27B · OpenRouter</span>
+</div>
+
+<!-- ── Chat area ── -->
+<div id="chatWrap" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+
+  <!-- Welcome screen (shown until first message) -->
+  <div id="welcome">
+    <div class="oracle-big">⬡</div>
+    <h2>ORACLE is ready</h2>
+    <p>Your personal Web3 intelligence agent. Powered by Qwen3-27B running on Nosana's
+       decentralised GPU network. Ask anything about Solana DeFi, wallets, protocols, or crypto research.</p>
+    <div class="starter-prompts">
+      <div class="starter" onclick="useStarter(this)">
+        <strong>Research a protocol</strong>
+        Research the Drift protocol for me — TVL, risks, and audit history
+      </div>
+      <div class="starter" onclick="useStarter(this)">
+        <strong>Analyse a wallet</strong>
+        Analyze this wallet: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+      </div>
+      <div class="starter" onclick="useStarter(this)">
+        <strong>DeFi risk brief</strong>
+        What's the current risk level on Marginfi lending pools?
+      </div>
+      <div class="starter" onclick="useStarter(this)">
+        <strong>Explain MEV</strong>
+        Explain how MEV works on Solana and which protocols protect against it
+      </div>
+      <div class="starter" onclick="useStarter(this)">
+        <strong>Liquid staking</strong>
+        Compare Marinade, Jito, and Sanctum liquid staking — which has the best risk profile?
+      </div>
+      <div class="starter" onclick="useStarter(this)">
+        <strong>Generate a brief</strong>
+        Research zero-knowledge proofs and generate a brief on their use in Solana
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages list (hidden until first message) -->
+  <div id="messages" style="display:none;"></div>
+
+</div>
+
+<!-- ── Input ── -->
+<div class="input-area">
+  <div class="input-row">
+    <textarea id="msgInput" rows="1" placeholder="Ask ORACLE anything… (Shift+Enter for new line)" maxlength="4000"></textarea>
+    <button id="sendBtn" title="Send (Enter)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+  <p class="input-hint">Enter to send · Shift+Enter for new line · NFA, DYOR — ORACLE output is research, not financial advice</p>
+</div>
+
+<!-- ── Error toast ── -->
+<div id="errorToast"></div>
+
+<script>
+  // ── Config ──────────────────────────────────────────────────────────────────
+  // Use the same origin so it works both locally and on Nosana
+  const API_BASE = window.location.origin;
+
+  // Stable user ID stored in sessionStorage so conversation context persists
+  const userId = sessionStorage.getItem('oracle_uid') || (() => {
+    const id = 'user_' + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('oracle_uid', id);
+    return id;
+  })();
+
+  // Will be set once we discover the agent ID from /api/agents
+  let agentId = null;
+
+  // ── DOM refs ────────────────────────────────────────────────────────────────
+  const msgInput   = document.getElementById('msgInput');
+  const sendBtn    = document.getElementById('sendBtn');
+  const messages   = document.getElementById('messages');
+  const welcome    = document.getElementById('welcome');
+  const statusDot  = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const errorToast = document.getElementById('errorToast');
+
+  // ── Status management ────────────────────────────────────────────────────────
+  function setStatus(state, label) {
+    statusDot.className = 'dot ' + (state || '');
+    statusText.textContent = label;
+  }
+
+  // ── Agent discovery ──────────────────────────────────────────────────────────
+  // Poll /api/agents until ElizaOS registers the ORACLE agent (takes 15-45s)
+  async function discoverAgent() {
+    const MAX_WAIT = 120_000; // 2 minutes
+    const INTERVAL = 3_000;
+    const deadline = Date.now() + MAX_WAIT;
+
+    setStatus('', 'Connecting…');
+
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(API_BASE + '/api/agents');
+        if (res.ok) {
+          const data = await res.json();
+          // ElizaOS returns { agents: [...] } or an array directly
+          const agents = data.agents ?? data;
+          if (Array.isArray(agents) && agents.length > 0) {
+            agentId = agents[0].id;
+            setStatus('online', 'ORACLE online');
+            sendBtn.disabled = false;
+            return;
+          }
+        }
+      } catch (_) { /* not ready yet */ }
+      await sleep(INTERVAL);
+    }
+    setStatus('error', 'Agent timeout');
+    showError('ORACLE took too long to start. Refresh the page to retry.');
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Send a message ───────────────────────────────────────────────────────────
+  async function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || !agentId) return;
+
+    // Show chat, hide welcome
+    if (welcome.style.display !== 'none') {
+      welcome.style.display = 'none';
+      messages.style.display = 'flex';
+    }
+
+    appendMessage('user', text);
+    msgInput.value = '';
+    autoResize();
+    sendBtn.disabled = true;
+
+    const typingId = appendTyping();
+
+    try {
+      const res = await fetch(`${API_BASE}/api/agents/${agentId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, userId, roomId: `oracle_${userId}` }),
+      });
+
+      removeTyping(typingId);
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => res.statusText);
+        throw new Error(`Server error ${res.status}: ${err}`);
+      }
+
+      const data = await res.json();
+
+      // ElizaOS returns an array of response messages
+      const responses = Array.isArray(data) ? data : [data];
+      for (const r of responses) {
+        const txt = r.text ?? r.content?.text ?? JSON.stringify(r);
+        appendMessage('agent', txt);
+      }
+    } catch (err) {
+      removeTyping(typingId);
+      showError('Failed to reach ORACLE: ' + err.message);
+      appendMessage('agent', '⚠️ ORACLE encountered an error reaching the backend. Please try again.');
+    }
+
+    sendBtn.disabled = false;
+    msgInput.focus();
+  }
+
+  // ── Append a chat message bubble ─────────────────────────────────────────────
+  function appendMessage(role, text) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? 'U' : '⬡';
+
+    const col = document.createElement('div');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = renderMarkdown(text);
+
+    const time = document.createElement('div');
+    time.className = 'msg-time';
+    time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    col.appendChild(bubble);
+    col.appendChild(time);
+    wrap.appendChild(avatar);
+    wrap.appendChild(col);
+    messages.appendChild(wrap);
+    messages.scrollTop = messages.scrollHeight;
+    return wrap;
+  }
+
+  // ── Typing indicator ─────────────────────────────────────────────────────────
+  function appendTyping() {
+    const id = 'typing_' + Date.now();
+    const wrap = document.createElement('div');
+    wrap.className = 'msg agent';
+    wrap.id = id;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '⬡';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble typing-bubble';
+    bubble.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(bubble);
+    messages.appendChild(wrap);
+    messages.scrollTop = messages.scrollHeight;
+    return id;
+  }
+
+  function removeTyping(id) {
+    document.getElementById(id)?.remove();
+  }
+
+  // ── Starter prompts ──────────────────────────────────────────────────────────
+  function useStarter(el) {
+    const text = el.textContent.trim().replace(/^[^\n]+\n/, ''); // strip the <strong> line
+    msgInput.value = text.trim();
+    autoResize();
+    msgInput.focus();
+  }
+
+  // ── Error toast ──────────────────────────────────────────────────────────────
+  function showError(msg) {
+    errorToast.textContent = msg;
+    errorToast.style.display = 'block';
+    setTimeout(() => { errorToast.style.display = 'none'; }, 6000);
+  }
+
+  // ── Minimal Markdown renderer (no dependencies) ───────────────────────────────
+  function renderMarkdown(md) {
+    // Escape HTML first
+    let s = md
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Fenced code blocks
+    s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    // Inline code
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Horizontal rule
+    s = s.replace(/^---$/gm, '<hr>');
+    // Headers
+    s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    s = s.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    // Bold + italic
+    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Blockquote
+    s = s.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    // Unordered list items
+    s = s.replace(/^[\*\-] (.+)$/gm, '<li>$1</li>');
+    s = s.replace(/(<li>[\s\S]+?<\/li>)(?=\s*(<li>|$))/g, (m) => '<ul>' + m + '</ul>');
+    // Ordered list
+    s = s.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    // Links
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Risk emojis colour coding
+    s = s.replace(/🟢/g, '<span class="risk-green">🟢</span>');
+    s = s.replace(/🟡/g, '<span class="risk-yellow">🟡</span>');
+    s = s.replace(/🔴/g, '<span class="risk-red">🔴</span>');
+    // Paragraphs — double newline → <p>
+    s = s.split(/\n{2,}/).map(p => {
+      p = p.trim();
+      if (!p) return '';
+      if (/^<(h[1-3]|ul|ol|li|pre|hr|blockquote)/.test(p)) return p;
+      return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+    }).join('\n');
+
+    return s;
+  }
+
+  // ── Textarea auto-resize ──────────────────────────────────────────────────────
+  function autoResize() {
+    msgInput.style.height = 'auto';
+    msgInput.style.height = Math.min(msgInput.scrollHeight, 140) + 'px';
+  }
+
+  // ── Event listeners ──────────────────────────────────────────────────────────
+  sendBtn.addEventListener('click', sendMessage);
+
+  msgInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  msgInput.addEventListener('input', autoResize);
+
+  // Disable send until agent is discovered
+  sendBtn.disabled = true;
+
+  // ── Boot ─────────────────────────────────────────────────────────────────────
+  discoverAgent();
+</script>
+</body>
+</html>

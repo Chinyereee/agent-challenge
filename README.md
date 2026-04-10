@@ -26,32 +26,34 @@ No OpenAI. No Google. Your agent, your data, your stack.
 You (Browser / Telegram)
         │
         ▼
-┌───────────────────────────────────┐
-│  Pre-boot Health Server (instant) │  ◄── responds in <100ms on startup
-│  releases port → AgentServer      │
-└─────────────┬─────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────────────────┐
-│              ElizaOS v1 AgentServer                  │
-│                                                      │
-│  character.json  ──►  persona, system prompt, style  │
-│                                                      │
-│  Plugins:                                            │
-│    @elizaos/plugin-bootstrap  ◄── core message loop  │
-│    @elizaos/plugin-openrouter ◄── LLM routing        │
-│    @elizaos/plugin-telegram   ◄── bot + alerts       │
-│    @oracle/plugin-solana-intel◄── custom actions     │
-│       ├── RESEARCH_PROTOCOL                          │
-│       ├── ANALYZE_WALLET                             │
-│       └── GENERATE_BRIEF                            │
-└─────────────────────┬───────────────────────────────┘
-                      │
-                      ▼
-           OpenRouter API / Nosana Inference
-                      │
-              Qwen3-27B-Instruct
-           (or any OpenRouter model)
+┌──────────────────────────────────────┐
+│   Pre-boot Health Server (instant)   │  ◄── responds in <100ms during startup
+│   releases port after ElizaOS ready  │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────────────────────┐
+│              ElizaOS v1 AgentServer                   │
+│                                                       │
+│  GET /  ──►  public/index.html  (custom chat UI)     │
+│                                                       │
+│  character.json  ──►  persona, system prompt, style   │
+│                                                       │
+│  Plugins:                                             │
+│    @elizaos/plugin-bootstrap  ◄── core message loop   │
+│    @elizaos/plugin-openrouter ◄── LLM routing         │
+│    @elizaos/plugin-telegram   ◄── bot + alerts        │
+│    @oracle/plugin-solana-intel◄── custom actions      │
+│       ├── RESEARCH_PROTOCOL                           │
+│       ├── ANALYZE_WALLET                              │
+│       └── GENERATE_BRIEF                             │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+            OpenRouter API (sk-or-v1-...)
+                       │
+               Qwen3-27B-Instruct
+            (or any OpenRouter model)
 ```
 
 ---
@@ -66,7 +68,7 @@ You (Browser / Telegram)
 | Nosana CLI | latest | `npm i -g @nosana/cli` |
 | OpenRouter account | — | [openrouter.ai](https://openrouter.ai) (free tier available) |
 
-> **Windows users**: Run all commands in PowerShell or Git Bash. Bun is not required.
+> **Windows users**: Run all commands in PowerShell or Git Bash. Bun is NOT required or used.
 
 ---
 
@@ -76,10 +78,11 @@ You (Browser / Telegram)
 |----------|----------|-------------|
 | `OPENROUTER_API_KEY` | **Yes** | Your OpenRouter API key (`sk-or-v1-...`) |
 | `SERVER_PORT` | No | HTTP port (default: `3000`) |
-| `DATABASE_URL` | No | DB path (default: PGlite WASM; set `sqlite:./data/oracle.sqlite` for faster startup) |
-| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token for alerts |
+| `DATABASE_URL` | No | DB backend (default: PGlite WASM; use `sqlite:./data/oracle.sqlite` for faster startup) |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram bot token for alert notifications |
 | `LOG_LEVEL` | No | Logging verbosity: `error`, `warn`, `info`, `debug` (default: `info`) |
-| `NODE_ENV` | No | Set to `production` in Docker (already set in Dockerfile) |
+| `NODE_ENV` | No | Set to `production` in Docker (already baked into the Dockerfile) |
+| `NODE_OPTIONS` | No | V8 flags — Dockerfile sets `--max-old-space-size=512` to cap RAM within Nosana limits |
 
 ---
 
@@ -102,14 +105,15 @@ cp .env.example .env
 Edit `.env`:
 
 ```bash
+# Required — get a free key at https://openrouter.ai/keys
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
+
 # Optional
 TELEGRAM_BOT_TOKEN=your_token
 DATABASE_URL=sqlite:./data/oracle.sqlite
 ```
 
-> Get a free OpenRouter key at [openrouter.ai/keys](https://openrouter.ai/keys).
-> Never commit `.env` to git — it is in `.gitignore`.
+> Never commit `.env` to git — it is already in `.gitignore`.
 
 ### 3 — Build and Run Locally
 
@@ -118,19 +122,41 @@ pnpm build
 node dist/index.js
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to chat with ORACLE.
+Open [http://localhost:3000](http://localhost:3000) — the custom ORACLE chat UI loads instantly.
 
-### 4 — Test the API
+ElizaOS takes 15-45 seconds to fully initialise. The chat UI shows a "Connecting…" status and
+automatically polls until the agent is ready — no manual refresh needed.
+
+### 4 — Test the REST API Directly
 
 ```bash
-# Health check
+# Health check (responds immediately, even during boot)
 curl http://localhost:3000/health
 
-# Send a message
-curl -X POST http://localhost:3000/api/message \
+# Discover the agent ID
+curl http://localhost:3000/api/agents
+
+# Send a message (replace AGENT_ID with the id from the step above)
+curl -X POST http://localhost:3000/api/agents/AGENT_ID/message \
   -H "Content-Type: application/json" \
-  -d '{"userId":"me","text":"Research the Drift protocol"}'
+  -d '{"text":"Research the Drift protocol","userId":"me","roomId":"oracle_me"}'
 ```
+
+---
+
+## Custom Frontend
+
+The chat interface lives in `public/index.html` — a single self-contained HTML/CSS/JS file with
+no build step required. It is served by the agent at `GET /` via a static-file middleware
+registered on `AgentServer.app` after ElizaOS boots.
+
+Features:
+- Dark-mode ORACLE branding with gradient accents
+- Markdown rendering (headers, bold, code blocks, lists, risk colour badges 🟢🟡🔴)
+- Typing indicator while ORACLE generates a response
+- Six starter prompts to get you going immediately
+- Auto-polls `/api/agents` on load and enables the input once the agent is ready
+- Works on mobile
 
 ---
 
@@ -151,6 +177,8 @@ docker run -p 3000:3000 \
   chinyereee/oracle-agent:latest
 ```
 
+Open [http://localhost:3000](http://localhost:3000) to use the chat UI.
+
 ---
 
 ## Nosana Deployment
@@ -161,28 +189,25 @@ ORACLE runs on Nosana's decentralised GPU network using the job spec in `nosana-
 
 ```bash
 npm install -g @nosana/cli
-nosana address          # creates a new wallet and prints your Solana address
+nosana address          # prints your Solana wallet address
 ```
 
 ### Step 2 — Fund Your Wallet
 
-Options:
 - **Hackathon credits**: Join [discord.gg/nosana](https://discord.gg/nosana) and ask in `#agent-challenge` for free NOS tokens
-- **Buy NOS**: Available on Raydium and Jupiter on Solana
-- **Testnet faucet**: `nosana faucet` (testnet only)
+- **Buy NOS**: Available on Raydium and Jupiter on Solana mainnet
+- **Check balance**: `nosana balance`
 
-Check balance:
-```bash
-nosana balance
-```
+### Step 3 — Set Your API Key in nosana-job.json
 
-### Step 3 — Update nosana-job.json
-
-Edit `nosana-job.json` and replace `YOUR_OPENROUTER_API_KEY` with your actual key:
+Edit `nosana-job.json` and replace `YOUR_OPENROUTER_API_KEY`:
 
 ```json
 "env": {
-  "OPENROUTER_API_KEY": "sk-or-v1-your-key-here"
+  "OPENROUTER_API_KEY": "sk-or-v1-your-key-here",
+  "SERVER_PORT": "3000",
+  "NODE_ENV": "production",
+  "DATABASE_URL": "sqlite:./data/oracle.sqlite"
 }
 ```
 
@@ -193,14 +218,17 @@ nosana job post --file nosana-job.json \
   --market 97G9NnvBDQ2WpKu6fasoMsAKmfj63C9rhysJnkeWodAf
 ```
 
-### Step 5 — Monitor
+### Step 5 — Get the Live URL and Monitor
 
 ```bash
 nosana job get <JOB_ID>
+# The "expose" field contains your public URL, e.g.:
+# https://<JOB_ID>.node.k8s.prd.nos.ci
+
 nosana job logs <JOB_ID> --follow
 ```
 
-The deployment URL is shown in `nosana job get` output under `expose`.
+Open the URL in your browser — the custom ORACLE chat UI loads at the root path `/`.
 
 ---
 
@@ -237,13 +265,13 @@ const myAction: Action = {
     return text.includes("trigger keyword");
   },
 
-  handler: async (runtime, message, _state, _options, callback) => {
+  handler: async (runtime, _message, _state, _options, callback) => {
     elizaLogger.info("[ORACLE] MY_ACTION triggered");
     try {
       const result = await runtime.generateText("Your prompt here");
       if (callback) await callback({ text: result.text, action: "MY_ACTION" });
     } catch (err) {
-      elizaLogger.error("[ORACLE] MY_ACTION failed:", err);
+      elizaLogger.error(`[ORACLE] MY_ACTION failed: ${String(err)}`);
       if (callback) await callback({ text: "⚠️ Error. Please try again.", action: "MY_ACTION" });
     }
   },
@@ -262,51 +290,53 @@ const myAction: Action = {
 ```
 agent-challenge/
 ├── character.json              # ORACLE persona, system prompt, plugins
-├── Dockerfile                  # Production container (Node.js 23, no bun)
+├── Dockerfile                  # Production container (Node.js 23 slim, no bun)
 ├── .dockerignore               # Excludes node_modules, .env, dist from build context
 ├── nosana-job.json             # Nosana deployment spec (CPU: 2000m, RAM: 4096MB)
 ├── .env.example                # Environment variable template
-├── package.json                # Dependencies and scripts
+├── package.json                # Dependencies and npm scripts
 ├── tsconfig.json               # TypeScript config (ESNext, Bundler resolution)
 ├── pnpm-lock.yaml              # Locked dependency tree
+├── public/
+│   └── index.html              # Custom ORACLE chat UI (pure HTML/CSS/JS, no build step)
 └── src/
-    ├── index.ts                # Agent bootstrap + pre-boot health server
+    ├── index.ts                # Agent bootstrap: pre-boot server + ElizaOS + static serving
     └── plugin-solana-intel/
-        └── index.ts            # Custom actions: RESEARCH_PROTOCOL, ANALYZE_WALLET, GENERATE_BRIEF
+        └── index.ts            # Custom plugin: RESEARCH_PROTOCOL, ANALYZE_WALLET, GENERATE_BRIEF
 ```
 
 ---
 
 ## Known Issues & Solutions
 
-### Agent takes 15-45 seconds to become responsive
+### Agent takes 15-45 seconds to become responsive after boot
 
 **Why**: ElizaOS initialises its database, loads plugins, and negotiates with the LLM endpoint before accepting messages.
 
-**Fix**: ORACLE includes a pre-boot HTTP server that responds to health checks instantly. You can chat once the page loads — messages sent during boot are queued and processed once ElizaOS is ready.
+**Fix**: The pre-boot HTTP server on port 3000 responds to health checks instantly, preventing Docker/Nosana from restarting the container. The custom chat UI auto-polls `/api/agents` and enables the message input once the agent registers — no page refresh needed.
 
-### "Answers before questions" UI quirk
+### "Answers before questions" in ElizaOS's built-in web UI
 
-**Why**: The ElizaOS web UI sometimes renders the agent's reply above the triggering user message. This is a message-ordering bug in `@elizaos/client` and does not affect the API or agent logic.
+**Why**: The ElizaOS default web UI (`@elizaos/client`) sometimes renders the agent's reply above the triggering user message. This is a message-ordering bug internal to that client package.
 
-**Workaround**: Use the REST API directly (`/api/message`) for production integrations. The conversation order in the API response is always correct.
+**Resolution**: ORACLE's custom frontend (`public/index.html`) replaces the built-in UI entirely. It appends messages in the correct order — user message first, then the agent reply — so this quirk does not occur in the ORACLE chat interface.
 
-### Docker build times out on heavy packages (pdfjs-dist, @napi-rs/canvas)
+### Docker build times out fetching heavy packages (pdfjs-dist, @electric-sql/pglite)
 
-**Why**: These are optional transitive dependencies pulled in by `@elizaos/*`.
+**Why**: These are optional transitive dependencies pulled in by `@elizaos/*` packages. They are large (~10 MB each) and slow on constrained CI/build networks.
 
-**Fix**: The Dockerfile uses `pnpm install --no-optional` to skip them. The retry env vars (`NPM_CONFIG_FETCH_RETRIES=5`) handle intermittent registry timeouts.
+**Fix**: The Dockerfile runs `pnpm install --no-optional` to skip optional deps, and sets `NPM_CONFIG_FETCH_RETRIES=5` with extended timeouts so transitive downloads retry automatically.
 
 ### Nosana job stays in "pending" state
 
-**Why**: Usually insufficient NOS balance or no available GPU nodes in the market.
+**Why**: Usually insufficient NOS balance or no available GPU worker in the market.
 
 **Fix**:
 ```bash
-nosana balance          # check NOS + SOL balance
+nosana balance
 nosana market get 97G9NnvBDQ2WpKu6fasoMsAKmfj63C9rhysJnkeWodAf
-# Get free credits in Nosana Discord: discord.gg/nosana
 ```
+Get free credits in the Nosana Discord (`discord.gg/nosana`, `#agent-challenge` channel).
 
 ### pnpm install fails on Node.js < 23
 
@@ -322,9 +352,9 @@ pnpm install
 ## Getting Free Nosana Credits
 
 1. Join the Nosana Discord: [discord.gg/nosana](https://discord.gg/nosana)
-2. Go to the `#agent-challenge` or `#faucet` channel
-3. Request hackathon credits — the team provides NOS tokens for challenge participants
-4. Alternatively, follow [@nosana_ci](https://twitter.com/nosana_ci) on Twitter for airdrop announcements
+2. Go to `#agent-challenge` or `#faucet`
+3. Request hackathon NOS tokens — the team actively supports challenge participants
+4. Follow [@nosana_ci](https://twitter.com/nosana_ci) on Twitter for airdrop announcements
 
 ---
 
